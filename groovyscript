@@ -1,0 +1,75 @@
+pipeline {
+  agent any
+  environment {
+      MAJOR = '1'
+      MINOR = '0'
+	    //Orchestrator Services
+	  UIPATH_ORCH_URL = "https://orch-gourav.tam.local/"
+	        //UIPATH_ORCH_LOGICAL_NAME = "anupaminc"
+	  UIPATH_ORCH_TENANT_NAME = "Default"
+	  UIPATH_ORCH_UAT_FOLDER_NAME = "hellowworld"
+	  UIPATH_ORCH_PROD_FOLDER_NAME = "Prod"
+  }
+  stages {
+      stage('Build') {
+          steps {
+              checkout([$class: 'GitSCM',
+			  branches: [[name: '*/master']],
+			  doGenerateSubmoduleConfigurations: false,
+			  extensions: [],
+			  submoduleCfg: [],
+			  userRemoteConfigs: [[credentialsId: '3cd81973-3076-40b2-8979-17dc164958b6', url: 'https://github.com/gouravkumar525/Project2.git']]])
+              UiPathPack (
+			  outputPath: "${WORKSPACE}\\Output\\${env.BUILD_NUMBER}",
+			  projectJsonPath: "${WORKSPACE}",
+			  version:[$class: 'ManualVersionEntry', version: "${MAJOR}.${MINOR}.${env.BUILD_NUMBER}"],
+			   traceLevel: "None",
+			  )
+			  
+          }
+      }
+      stage('UAT Environment') {
+          steps {
+              echo "Deploying  to UAT orchestrator"
+	                UiPathDeploy (
+	                packagePath: "${WORKSPACE}\\Output\\${env.BUILD_NUMBER}",
+	                orchestratorAddress: "${UIPATH_ORCH_URL}",
+	                orchestratorTenant: "${UIPATH_ORCH_TENANT_NAME}",
+	                folderName: "${UIPATH_ORCH_UAT_FOLDER_NAME}",
+	                environments: 'INT',
+					traceLevel: "None",
+					entryPointPaths:"main.xaml",
+	                credentials: [$class: 'UserPassAuthenticationEntry', credentialsId: 'c61a1f5a-8502-4371-b927-b4bfd62d220c']
+	                //credentials: Token(accountName: "${UIPATH_ORCH_LOGICAL_NAME}", credentialsId: 'APIUserKey'),
+	
+					)
+          }
+      }
+      stage('Production Environment') {
+          steps {
+              mail bcc: 'gouravkumar525@gmail.com', body: " Hi, \n \n Please follow the link below to approve deployment into production. \n \n http://10.1.2.5:8080/job/Demo_Jenkins/ \n \n Regards, \n Gourav", cc: 'gouravkumar525@gmail.com', from: 'jenkins@uipath.com', replyTo: 'gouravkumar525@gmail.com', subject: 'Your Approval Required', to: env.APPROVERS
+              timeout(time: 14, unit: 'DAYS') {
+                  input message: 'Please approve the deployment to Production', submitter:"Gourav"
+              }
+              echo "Deploying  to PROD orchestrator"
+	                UiPathDeploy (
+	                packagePath: "${WORKSPACE}\\Output\\${env.BUILD_NUMBER}",
+	                orchestratorAddress: "${UIPATH_ORCH_URL}",
+	                orchestratorTenant: "${UIPATH_ORCH_TENANT_NAME}",
+	                folderName: "${UIPATH_ORCH_PROD_FOLDER_NAME}",
+	                environments: 'INT',
+					 traceLevel: "None",
+					 entryPointPaths:"main.xaml",
+	                credentials: [$class: 'UserPassAuthenticationEntry', credentialsId: 'c61a1f5a-8502-4371-b927-b4bfd62d220c']
+	                //credentials: Token(accountName: "${UIPATH_ORCH_LOGICAL_NAME}", credentialsId: 'APIUserKey'),
+	
+					)
+          }
+      }
+ }
+ post {
+      success {
+          echo "Process  with version ${MAJOR}.${MINOR}.${env.BUILD_NUMBER} was successfully deployed into Production."
+      }
+  }
+ }
